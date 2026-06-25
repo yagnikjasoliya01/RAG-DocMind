@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api.routes import auth
+from app.api.routes import auth, documents
 
 settings = get_settings()
 
@@ -13,7 +13,6 @@ app = FastAPI(
     docs_url="/docs" if settings.environment == "development" else None,
 )
 
-# ── CORS ──────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -22,8 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(auth.router,      prefix="/auth",      tags=["auth"])
+app.include_router(documents.router, prefix="/documents", tags=["documents"])
 
 
 @app.get("/health")
