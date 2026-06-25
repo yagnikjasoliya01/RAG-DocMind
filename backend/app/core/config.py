@@ -36,8 +36,9 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.allowed_origins.split(",")]
 
     class Config:
-        env_file = ".env"
+        env_file = "../.env"
         case_sensitive = False
+        extra = "ignore"        # ← fixes NEXT_PUBLIC_ error
 
 
 @lru_cache()
