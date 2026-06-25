@@ -35,7 +35,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 def embed_query(text: str) -> list[float]:
     client = _get_client()
     result = client.models.embed_content(
-        model="text-embedding-004",
+        model="gemini-embedding-001",
         contents=[text],
         config=types.EmbedContentConfig(
             task_type="RETRIEVAL_QUERY"
