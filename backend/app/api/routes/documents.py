@@ -6,6 +6,7 @@ from app.db.supabase import get_supabase_admin
 from app.services.storage import upload_file_to_supabase, delete_file_from_supabase
 from pydantic import BaseModel
 from typing import Optional
+from app.services.vector_store import delete_document_chunks
 
 router = APIRouter()
 
@@ -133,10 +134,10 @@ async def delete_document(
     doc_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    """Deletes document from storage + DB (chunks cascade automatically)."""
+    """Deletes document from ChromaDB + Storage + DB."""
     supabase = get_supabase_admin()
 
-    # Get document
+    # ── Get document ──────────────────────────────────────────
     result = supabase.table("documents")\
         .select("*")\
         .eq("id", doc_id)\
@@ -149,10 +150,19 @@ async def delete_document(
 
     doc = result.data
 
-    # Delete from Supabase Storage
-    delete_file_from_supabase(supabase, doc["storage_path"])
+    # ── Delete vectors from ChromaDB ──────────────────────────
+    try:
+        delete_document_chunks(doc_id)
+    except Exception as e:
+        print(f"Warning: Could not delete ChromaDB chunks: {e}")
 
-    # Delete from DB (chunks cascade automatically via FK)
+    # ── Delete file from Supabase Storage ─────────────────────
+    try:
+        delete_file_from_supabase(supabase, doc["storage_path"])
+    except Exception as e:
+        print(f"Warning: Could not delete file from storage: {e}")
+
+    # ── Delete from DB (chunks cascade via FK) ────────────────
     supabase.table("documents")\
         .delete()\
         .eq("id", doc_id)\
