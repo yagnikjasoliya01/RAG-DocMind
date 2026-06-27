@@ -7,6 +7,7 @@ from app.schemas.chat import (
     CreateSessionRequest, SessionResponse,
     QueryRequest, MessageResponse
 )
+from pydantic import BaseModel
 from app.services.rag import get_rag_response
 
 router = APIRouter()
@@ -109,7 +110,8 @@ async def query(
             async for token, chunks, accumulated in get_rag_response(
                 question=body.question,
                 user_id=user_id,
-                chat_history=chat_history
+                chat_history=chat_history,
+                document_ids=body.document_ids
             ):
                 full_response = accumulated
                 source_chunks = chunks
@@ -171,3 +173,23 @@ async def delete_session(
         .execute()
 
     return {"message": "Session deleted"}
+
+
+class RenameSessionRequest(BaseModel):
+    title: str
+
+@router.patch("/sessions/{session_id}/rename")
+async def rename_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    user_id: str = Depends(get_current_user)
+):
+    supabase = get_supabase_admin()
+
+    supabase.table("chat_sessions")\
+        .update({"title": body.title})\
+        .eq("id", session_id)\
+        .eq("user_id", user_id)\
+        .execute()
+
+    return {"message": "Session renamed"}

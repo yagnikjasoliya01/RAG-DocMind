@@ -55,7 +55,8 @@ def format_context(chunks: list[dict]) -> str:
 async def get_rag_response(
     question: str,
     user_id: str,
-    chat_history: list[dict]
+    chat_history: list[dict],
+    document_ids: list[str] = []
 ):
     """
     Full RAG pipeline:
@@ -71,7 +72,8 @@ async def get_rag_response(
     chunks = search_chunks(
         query_embedding=query_embedding,
         user_id=user_id,
-        n_results=5
+        n_results=5,
+        document_ids=document_ids
     )
 
     # ── Step 3: Format context ────────────────────────────────

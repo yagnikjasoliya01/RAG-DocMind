@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { getMessages, streamQuery } from "@/lib/api";
+import {
+  getMessages,
+  streamQuery,
+  listDocuments,
+} from "@/lib/api";
 
 interface Message {
   id?: string;
@@ -19,9 +23,34 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [documents, setDocuments] = useState<{ id: string, original_name: string }[]>([]);
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [showDocFilter, setShowDocFilter] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowDocFilter(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetchDocs();
+  }, []);
+
+  async function fetchDocs() {
+    const docs = await listDocuments();
+    setDocuments(docs.filter((d: any) => d.status === "ready"));
+  }
 
   useEffect(() => {
     if (sessionId) {
@@ -87,7 +116,8 @@ export default function ChatPage() {
           return updated;
         });
         setLoading(false);
-      }
+      },
+      selectedDocs
     );
   }
 
@@ -161,9 +191,18 @@ export default function ChatPage() {
 
           {messages.length === 0 && (
             <div style={{ textAlign: "center", paddingTop: "60px" }}>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Ask anything about your uploaded documents
-              </p>
+              <div style={{ textAlign: "center", padding: "60px 0" }}>
+                <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  style={{ color: "var(--border)", margin: "0 auto 16px", display: "block" }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p style={{ fontSize: "15px", fontWeight: "600", color: "var(--text)", marginBottom: "6px" }}>
+                  No messages yet
+                </p>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                  Ask anything about your uploaded documents
+                </p>
+              </div>
             </div>
           )}
 
@@ -258,6 +297,186 @@ export default function ChatPage() {
         borderTop: "1px solid var(--border)",
         background: "var(--bg)"
       }}>
+        <div style={{ maxWidth: "720px", margin: "0 auto" }}>
+
+          {/* Document filter */}
+          {documents.length > 0 && (
+            <div ref={filterRef} style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>              <button
+              onClick={() => setShowDocFilter(!showDocFilter)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "5px 12px",
+                borderRadius: "20px",
+                border: `1px solid ${selectedDocs.length > 0 ? "var(--accent)" : "var(--border)"}`,
+                background: selectedDocs.length > 0 ? "var(--active)" : "transparent",
+                color: selectedDocs.length > 0 ? "var(--accent)" : "var(--text-muted)",
+                fontSize: "12px",
+                fontWeight: "500",
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              {selectedDocs.length === 0 || selectedDocs.length === documents.length
+                ? "All docs"
+                : `${selectedDocs.length} of ${documents.length} docs`}                <svg
+                  width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  style={{ transform: showDocFilter ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}
+                >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+              {/* Filter dropdown */}
+              {showDocFilter && (
+                <div style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 8px)",
+                  left: 0,
+                  minWidth: "280px",
+                  maxWidth: "400px",
+                  background: "var(--bg-secondary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "12px",
+                  padding: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                  maxHeight: "220px",
+                  overflowY: "auto",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.15)",
+                  zIndex: 10
+                }}>
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "4px 8px",
+                    marginBottom: "4px"
+                  }}>
+                    <span style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Search in
+                    </span>
+                    {selectedDocs.length > 0 && (
+                      <button
+                        onClick={() => setSelectedDocs([])}
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--accent)",
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  {/* All documents option */}
+                  <div
+                    onClick={() => {
+                      if (selectedDocs.length === documents.length) {
+                        setSelectedDocs([]);
+                      } else {
+                        setSelectedDocs(documents.map(d => d.id));
+                      }
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 8px",
+                      borderRadius: "7px",
+                      cursor: "pointer",
+                      background: selectedDocs.length === documents.length ? "var(--active)" : "transparent", transition: "all 0.15s"
+                    }}
+                  >
+                    <div style={{
+                      width: "14px", height: "14px",
+                      borderRadius: "3px",
+                      border: `2px solid ${selectedDocs.length === documents.length ? "var(--accent)" : "var(--border)"}`,
+                      background: selectedDocs.length === documents.length ? "var(--accent)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0
+                    }}>
+                      {selectedDocs.length === documents.length && (
+                        <svg width="8" height="8" fill="white" viewBox="0 0 24 24">
+                          <path d="M20 6L9 17l-5-5" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{ fontSize: "12px", color: "var(--text)", fontWeight: selectedDocs.length === 0 ? "500" : "400" }}>
+                      All documents
+                    </span>
+                  </div>
+
+                  {/* Individual documents */}
+                  {documents.map(doc => {
+                    const isSelected = selectedDocs.includes(doc.id);
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => {
+                          setSelectedDocs(prev =>
+                            isSelected
+                              ? prev.filter(id => id !== doc.id)
+                              : [...prev, doc.id]
+                          );
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "6px 8px",
+                          borderRadius: "7px",
+                          cursor: "pointer",
+                          background: isSelected ? "var(--active)" : "transparent",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        <div style={{
+                          width: "14px", height: "14px",
+                          borderRadius: "3px",
+                          border: `2px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+                          background: isSelected ? "var(--accent)" : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0
+                        }}>
+                          {isSelected && (
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+                              <path d="M20 6L9 17l-5-5" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{
+                            fontSize: "12px",
+                            color: "var(--text)",
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontWeight: isSelected ? "500" : "400",
+                            maxWidth: "280px"
+                          }}>
+                            {doc.original_name.length > 35
+                              ? doc.original_name.substring(0, 35) + "..."
+                              : doc.original_name}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div style={{ maxWidth: "720px", margin: "0 auto" }}>
           <div style={{
             display: "flex",

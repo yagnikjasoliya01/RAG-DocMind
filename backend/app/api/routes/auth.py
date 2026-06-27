@@ -93,3 +93,31 @@ async def update_profile(
     }).eq("id", user_id).execute()
 
     return {"message": "Profile updated"}
+
+@router.delete("/account")
+async def delete_account(user_id: str = Depends(get_current_user)):
+    supabase = get_supabase_admin()
+
+    # Delete all documents from storage
+    docs = supabase.table("documents")\
+        .select("storage_path")\
+        .eq("user_id", user_id)\
+        .execute()
+
+    for doc in docs.data:
+        try:
+            supabase.storage.from_("documents")\
+                .remove([doc["storage_path"]])
+        except:
+            pass
+
+    # Delete from DB (cascades to chunks, sessions, messages)
+    supabase.table("user_profiles")\
+        .delete()\
+        .eq("id", user_id)\
+        .execute()
+
+    # Delete from Supabase Auth
+    supabase.auth.admin.delete_user(user_id)
+
+    return {"message": "Account deleted"}

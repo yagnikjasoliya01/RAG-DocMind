@@ -1,6 +1,9 @@
 import hashlib
 import uuid
+import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from app.core.auth import get_current_user
 from app.db.supabase import get_supabase_admin
 from app.services.storage import upload_file_to_supabase, delete_file_from_supabase
@@ -170,3 +173,61 @@ async def delete_document(
         .execute()
 
     return {"message": "Document deleted successfully"}
+
+@router.get("/{doc_id}/progress")
+async def get_document_progress(
+    doc_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """SSE endpoint for real-time processing progress."""
+    supabase = get_supabase_admin()
+
+    async def stream():
+        steps = [
+            "Downloading file...",
+            "Extracting text...",
+            "Splitting into chunks...",
+            "Generating embeddings...",
+            "Storing in vector database...",
+        ]
+
+        step_index = 0
+
+        while True:
+            result = supabase.table("documents")\
+                .select("status, chunk_count, error_message")\
+                .eq("id", doc_id)\
+                .eq("user_id", user_id)\
+                .execute()
+
+            if not result.data:
+                yield f"data: {json.dumps({'error': 'Document not found'})}\n\n"
+                break
+
+            doc = result.data[0]
+            status = doc["status"]
+
+            if status == "processing" and step_index < len(steps) - 1:
+                step_index += 1
+
+            yield f"data: {json.dumps({'status': status, 'step': steps[min(step_index, len(steps)-1)], 'step_index': step_index, 'total_steps': len(steps), 'chunk_count': doc['chunk_count']})}\n\n"
+
+            if status == "ready":
+                yield f"data: {json.dumps({'status': 'ready', 'step': 'Done!', 'chunk_count': doc['chunk_count']})}\n\n"
+                break
+
+            if status == "error":
+                yield f"data: {json.dumps({'status': 'error', 'step': doc.get('error_message', 'Processing failed')})}\n\n"
+                break
+
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

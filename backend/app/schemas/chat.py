@@ -16,6 +16,7 @@ class SessionResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str
+    document_ids: list[str] = []  # empty = search all docs
 
 
 class MessageResponse(BaseModel):

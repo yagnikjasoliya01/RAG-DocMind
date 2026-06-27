@@ -43,18 +43,26 @@ def upsert_chunks(
 def search_chunks(
     query_embedding: list[float],
     user_id: str,
-    n_results: int = 5
+    n_results: int = 5,
+    document_ids: list[str] = []
 ) -> list[dict]:
-    """
-    Searches for similar chunks.
-    ALWAYS filters by user_id — this is the tenant boundary.
-    """
     collection = get_or_create_collection()
+
+    # Build filter
+    if document_ids:
+        where_filter = {
+            "$and": [
+                {"user_id": {"$eq": user_id}},
+                {"document_id": {"$in": document_ids}}
+            ]
+        }
+    else:
+        where_filter = {"user_id": user_id}
 
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=n_results,
-        where={"user_id": user_id},
+        where=where_filter,
         include=["documents", "metadatas", "distances"]
     )
 

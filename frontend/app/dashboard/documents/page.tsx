@@ -32,6 +32,7 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [processingDocs, setProcessingDocs] = useState<Record<string, { step: string; step_index: number; total_steps: number }>>({});
   const [confirm, setConfirm] = useState<ConfirmDialog | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -82,9 +83,56 @@ export default function DocumentsPage() {
     } else if (result.document_id) {
       showToast("Uploaded! Processing started...", "success");
       await fetchDocuments();
-      startPolling(result.document_id);
+      startProgressStream(result.document_id);
     }
     setUploading(false);
+  }
+
+  async function startProgressStream(docId: string) {
+    const { createClient } = await import("@/lib/supabase");
+    const supabase = createClient();
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+
+    const res = await fetch(`http://localhost:8000/documents/${docId}/progress`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.status === "ready" || data.status === "error") {
+              setProcessingDocs(prev => {
+                const updated = { ...prev };
+                delete updated[docId];
+                return updated;
+              });
+              await fetchDocuments();
+            } else {
+              setProcessingDocs(prev => ({
+                ...prev,
+                [docId]: {
+                  step: data.step,
+                  step_index: data.step_index,
+                  total_steps: data.total_steps
+                }
+              }));
+            }
+          } catch { }
+        }
+      }
+    }
   }
 
   async function handleDeleteConfirmed() {
@@ -202,9 +250,16 @@ export default function DocumentsPage() {
 
         {/* Documents list */}
         {documents.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-              No documents yet — upload your first PDF above
+          <div style={{ textAlign: "center", padding: "60px 0" }}>
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              style={{ color: "var(--border)", margin: "0 auto 16px", display: "block" }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            <p style={{ fontSize: "15px", fontWeight: "600", color: "var(--text)", marginBottom: "6px" }}>
+              No documents yet
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "280px", margin: "0 auto" }}>
+              Upload a PDF above to start asking questions about your documents
             </p>
           </div>
         ) : (
@@ -271,6 +326,38 @@ export default function DocumentsPage() {
                         {formatDate(doc.created_at)}
                       </span>
                     </div>
+
+                    {/* Progress bar */}
+                    {processingDocs[doc.id] && (
+                      <div style={{ marginTop: "8px" }}>
+                        <div style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: "4px"
+                        }}>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                            {processingDocs[doc.id].step}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                            {processingDocs[doc.id].step_index}/{processingDocs[doc.id].total_steps}
+                          </span>
+                        </div>
+                        <div style={{
+                          height: "3px",
+                          background: "var(--border)",
+                          borderRadius: "2px",
+                          overflow: "hidden"
+                        }}>
+                          <div style={{
+                            height: "100%",
+                            background: "var(--accent)",
+                            borderRadius: "2px",
+                            width: `${(processingDocs[doc.id].step_index / processingDocs[doc.id].total_steps) * 100}%`,
+                            transition: "width 0.5s ease"
+                          }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Delete */}

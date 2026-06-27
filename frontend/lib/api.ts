@@ -84,7 +84,8 @@ export async function streamQuery(
   question: string,
   onToken: (token: string) => void,
   onDone: () => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
+  documentIds: string[] = []
 ) {
   const token = await getToken();
 
@@ -96,7 +97,7 @@ export async function streamQuery(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, document_ids: documentIds }),
     }
   );
 

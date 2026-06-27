@@ -29,6 +29,20 @@ export default function DashboardLayout({
   const [theme, setTheme] = useState("dark");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [renamingSession, setRenamingSession] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.key === "k") {
+        e.preventDefault();
+        handleNewChat();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -81,6 +95,25 @@ export default function DashboardLayout({
     setSessions((prev) => [session, ...prev]);
     setActiveSession(session.id);
     router.push(`/dashboard/chat?session=${session.id}`);
+  }
+
+  async function handleRenameSession(sessionId: string, newTitle: string) {
+    if (!newTitle.trim()) return;
+
+    const { data } = await createClient().auth.getSession();
+    await fetch(`http://localhost:8000/chat/sessions/${sessionId}/rename`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${data.session?.access_token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ title: newTitle.trim() })
+    });
+
+    setSessions(prev =>
+      prev.map(s => s.id === sessionId ? { ...s, title: newTitle.trim() } : s)
+    );
+    setRenamingSession(null);
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
@@ -194,7 +227,18 @@ export default function DashboardLayout({
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            New Chat
+            <span style={{ flex: 1, textAlign: "left" }}>New Chat</span>
+            <span style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              background: "var(--bg-tertiary)",
+              border: "1px solid var(--border)",
+              borderRadius: "4px",
+              padding: "1px 5px",
+              fontFamily: "monospace"
+            }}>
+              Ctrl K
+            </span>
           </button>
         </div>
 
@@ -285,17 +329,48 @@ export default function DashboardLayout({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
 
-                <span style={{
-                  flex: 1,
-                  fontSize: "13px",
-                  color: isActive ? "var(--accent)" : "var(--text-secondary)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontWeight: isActive ? "500" : "400"
-                }}>
-                  {session.title}
-                </span>
+                {renamingSession === session.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={() => handleRenameSession(session.id, renameValue)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") handleRenameSession(session.id, renameValue);
+                      if (e.key === "Escape") setRenamingSession(null);
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      flex: 1,
+                      background: "var(--bg)",
+                      border: "1px solid var(--accent)",
+                      borderRadius: "5px",
+                      padding: "2px 6px",
+                      fontSize: "12px",
+                      color: "var(--text)",
+                      outline: "none"
+                    }}
+                  />
+                ) : (
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: "13px",
+                      color: isActive ? "var(--accent)" : "var(--text-secondary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontWeight: isActive ? "500" : "400"
+                    }}
+                    onDoubleClick={e => {
+                      e.stopPropagation();
+                      setRenamingSession(session.id);
+                      setRenameValue(session.title);
+                    }}
+                  >
+                    {session.title}
+                  </span>
+                )}
 
                 <button
                   onClick={(e) => handleDeleteSession(e, session.id)}
@@ -333,18 +408,111 @@ export default function DashboardLayout({
         </div>
 
         {/* User */}
-        <div style={{
-          padding: "12px",
-          borderTop: "1px solid var(--border)"
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "8px 10px",
-            borderRadius: "8px",
-            background: "var(--hover)"
-          }}>
+        <div style={{ padding: "12px", borderTop: "1px solid var(--border)", position: "relative" }}>
+
+          {/* Popup menu */}
+          {showUserMenu && (
+            <>
+              {/* Backdrop */}
+              <div
+                style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                onClick={() => setShowUserMenu(false)}
+              />
+              {/* Menu */}
+              <div style={{
+                position: "absolute",
+                bottom: "64px",
+                left: "12px",
+                right: "12px",
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "6px",
+                zIndex: 50,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
+              }}>
+                <button
+                  onClick={() => { router.push("/dashboard/profile"); setShowUserMenu(false); }}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: "7px",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text)",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    textAlign: "left",
+                    transition: "all 0.15s"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Profile
+                </button>
+
+                <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
+
+                <button
+                  onClick={() => { handleSignOut(); setShowUserMenu(false); }}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: "7px",
+                    border: "none",
+                    background: "transparent",
+                    color: "#ef4444",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    textAlign: "left",
+                    transition: "all 0.15s"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Sign out
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* User button */}
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "8px 10px",
+              borderRadius: "8px",
+              border: "none",
+              background: showUserMenu ? "var(--active)" : "transparent",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              textAlign: "left"
+            }}
+            onMouseEnter={e => {
+              if (!showUserMenu) e.currentTarget.style.background = "var(--hover)";
+            }}
+            onMouseLeave={e => {
+              if (!showUserMenu) e.currentTarget.style.background = "transparent";
+            }}
+          >
             <div style={{
               width: "28px", height: "28px",
               borderRadius: "50%",
@@ -364,7 +532,8 @@ export default function DashboardLayout({
                   color: "var(--text)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
+                  whiteSpace: "nowrap",
+                  margin: 0
                 }}>
                   @{username}
                 </p>
@@ -374,39 +543,26 @@ export default function DashboardLayout({
                 color: "var(--text-muted)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
+                whiteSpace: "nowrap",
+                margin: 0
               }}>
                 {email}
               </p>
             </div>
-            <button
-              onClick={handleSignOut}
-              title="Sign out"
+            <svg
+              width="13" height="13"
+              fill="none" viewBox="0 0 24 24"
+              stroke="currentColor"
               style={{
-                width: "24px", height: "24px",
-                borderRadius: "6px",
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
                 color: "var(--text-muted)",
-                transition: "all 0.15s",
-                flexShrink: 0
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.color = "#ef4444";
-                e.currentTarget.style.background = "rgba(239,68,68,0.1)";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color = "var(--text-muted)";
-                e.currentTarget.style.background = "transparent";
+                flexShrink: 0,
+                transform: showUserMenu ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s"
               }}
             >
-              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
         </div>
 
       </aside>
