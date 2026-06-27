@@ -6,6 +6,10 @@ from app.services.pdf_extractor import extract_text_from_pdf
 from app.services.embeddings import embed_texts
 from app.services.vector_store import upsert_chunks, delete_document_chunks
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from app.core.config import get_settings
+settings = get_settings()
 
 @celery_app.task(bind=True, max_retries=3)
 def process_document(self, document_id: str, user_id: str):
@@ -44,12 +48,30 @@ def process_document(self, document_id: str, user_id: str):
             raise ValueError("No text could be extracted from this PDF")
 
         # ── Split into chunks ─────────────────────────────────
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        chunks = splitter.split_text(text)
+        try:
+            # Try semantic chunking first
+            embedding_model = GoogleGenerativeAIEmbeddings(
+                model="models/gemini-embedding-001",
+                google_api_key=settings.google_api_key,
+                http_options={"api_version": "v1"}
+            )
+            splitter = SemanticChunker(
+                embedding_model,
+                breakpoint_threshold_type="percentile",
+                breakpoint_threshold_amount=85
+            )
+            chunks = splitter.split_text(text)
+            # Fall back if too few chunks
+            if len(chunks) < 2:
+                raise ValueError("Too few semantic chunks")
+        except Exception:
+            # Fallback to recursive splitter
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", " ", ""]
+            )
+            chunks = splitter.split_text(text)
 
         if not chunks:
             raise ValueError("No chunks created from document")

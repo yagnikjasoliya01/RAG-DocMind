@@ -231,3 +231,31 @@ async def get_document_progress(
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@router.get("/{doc_id}/preview-url")
+async def get_preview_url(
+    doc_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Returns a signed URL to preview the PDF."""
+    supabase = get_supabase_admin()
+
+    result = supabase.table("documents")\
+        .select("storage_path, original_name")\
+        .eq("id", doc_id)\
+        .eq("user_id", user_id)\
+        .execute()
+
+    if not result.data:
+        raise HTTPException(404, "Document not found")
+
+    storage_path = result.data[0]["storage_path"]
+
+    signed = supabase.storage.from_("documents")\
+        .create_signed_url(storage_path, 3600)
+
+    return {
+        "url": signed["signedURL"],
+        "name": result.data[0]["original_name"]
+    }

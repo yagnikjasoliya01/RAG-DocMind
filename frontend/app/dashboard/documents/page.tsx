@@ -6,7 +6,9 @@ import {
   listDocuments,
   deleteDocument,
   getDocumentStatus,
+  getDocumentPreviewUrl
 } from "@/lib/api";
+
 
 interface Document {
   id: string;
@@ -34,6 +36,8 @@ export default function DocumentsPage() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [processingDocs, setProcessingDocs] = useState<Record<string, { step: string; step_index: number; total_steps: number }>>({});
   const [confirm, setConfirm] = useState<ConfirmDialog | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string, name: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
@@ -41,6 +45,13 @@ export default function DocumentsPage() {
     fetchDocuments();
     return () => Object.values(pollingRef.current).forEach(clearInterval);
   }, []);
+
+  async function handlePreview(docId: string) {
+    setPreviewLoading(true);
+    const data = await getDocumentPreviewUrl(docId);
+    setPreviewDoc(data);
+    setPreviewLoading(false);
+  }
 
   async function fetchDocuments() {
     const docs = await listDocuments();
@@ -360,6 +371,38 @@ export default function DocumentsPage() {
                     )}
                   </div>
 
+                  {doc.status === "ready" && (
+                    <button
+                      onClick={() => handlePreview(doc.id)}
+                      className="preview-doc-btn"
+                      style={{
+                        width: "28px", height: "28px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "var(--text-muted)",
+                        opacity: 0,
+                        transition: "all 0.15s",
+                        flexShrink: 0
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.color = "var(--accent)";
+                        e.currentTarget.style.background = "var(--active)";
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.color = "var(--text-muted)";
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                  )}
+
                   {/* Delete */}
                   <button
                     onClick={() => setConfirm({ docId: doc.id, docName: doc.original_name })}
@@ -494,8 +537,119 @@ export default function DocumentsPage() {
         </div>
       )}
 
+      {/* PDF Preview Panel */}
+      {previewDoc && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 50
+        }}
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              width: "90vw",
+              height: "90vh",
+              maxWidth: "900px",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden"
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 20px",
+              borderBottom: "1px solid var(--border)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "var(--text-muted)" }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span style={{
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "var(--text)",
+                  maxWidth: "500px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                  {previewDoc.name}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                
+                <a href={previewDoc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "7px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg)",
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px"
+                  }}
+                >
+                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Open
+                </a>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  style={{
+                    width: "30px", height: "30px",
+                    borderRadius: "7px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg)",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center"
+                  }}
+                >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* PDF iframe */}
+            <iframe
+              src={previewDoc.url}
+              style={{
+                flex: 1,
+                border: "none",
+                width: "100%"
+              }}
+              title={previewDoc.name}
+            />
+          </div>
+        </div>
+      )}
+
       <style>{`
         .doc-row:hover .delete-doc-btn {
+          opacity: 1 !important;
+        }
+        .doc-row:hover .preview-doc-btn {
           opacity: 1 !important;
         }
         @keyframes spin {

@@ -123,3 +123,8 @@ export async function streamQuery(
     }
   }
 }
+
+export async function getDocumentPreviewUrl(docId: string) {
+  const res = await authFetch(`/documents/${docId}/preview-url`);
+  return res.json();
+}
