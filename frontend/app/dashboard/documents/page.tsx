@@ -17,18 +17,28 @@ interface Document {
   error_message?: string;
 }
 
+interface Toast {
+  message: string;
+  type: "success" | "error" | "info";
+}
+
+interface ConfirmDialog {
+  docId: string;
+  docName: string;
+}
+
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmDialog | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   useEffect(() => {
     fetchDocuments();
-    return () => {
-      Object.values(pollingRef.current).forEach(clearInterval);
-    };
+    return () => Object.values(pollingRef.current).forEach(clearInterval);
   }, []);
 
   async function fetchDocuments() {
@@ -55,138 +65,360 @@ export default function DocumentsPage() {
     }, 3000);
   }
 
+  function showToast(message: string, type: Toast["type"] = "info") {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }
+
   async function handleUpload(file: File) {
     if (!file.name.endsWith(".pdf")) {
-      alert("Only PDF files are allowed");
+      showToast("Only PDF files are allowed", "error");
       return;
     }
     setUploading(true);
     const result = await uploadDocument(file);
-    if (result.document_id) {
+    if (result.status === "already_processed") {
+      showToast("This document was already uploaded!", "info");
+    } else if (result.document_id) {
+      showToast("Uploaded! Processing started...", "success");
       await fetchDocuments();
       startPolling(result.document_id);
     }
     setUploading(false);
   }
 
-  async function handleDelete(docId: string) {
-    if (!confirm("Delete this document?")) return;
-    await deleteDocument(docId);
-    setDocuments((prev) => prev.filter((d) => d.id !== docId));
+  async function handleDeleteConfirmed() {
+    if (!confirm) return;
+    await deleteDocument(confirm.docId);
+    setDocuments((prev) => prev.filter((d) => d.id !== confirm.docId));
+    setConfirm(null);
+    showToast("Document deleted", "success");
   }
 
-  function getStatusBadge(status: string) {
-    const map: Record<string, { color: string; label: string }> = {
-      pending:    { color: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20", label: "⏳ Pending" },
-      processing: { color: "bg-blue-500/10 text-blue-400 border-blue-500/20",      label: "⚙️ Processing" },
-      ready:      { color: "bg-green-500/10 text-green-400 border-green-500/20",   label: "✅ Ready" },
-      error:      { color: "bg-red-500/10 text-red-400 border-red-500/20",         label: "❌ Error" },
-    };
-    const s = map[status] || map.pending;
-    return (
-      <span className={`text-xs px-2 py-1 rounded-lg border ${s.color}`}>
-        {s.label}
-      </span>
-    );
+  function formatDate(dateStr: string) {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric"
+    });
   }
+
+  const statusConfig: Record<string, { label: string; color: string; dot: string }> = {
+    pending: { label: "Pending", color: "#d97706", dot: "#f59e0b" },
+    processing: { label: "Processing", color: "#2563eb", dot: "#3b82f6" },
+    ready: { label: "Ready", color: "#16a34a", dot: "#22c55e" },
+    error: { label: "Error", color: "#dc2626", dot: "#ef4444" },
+  };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div style={{
+      height: "100%",
+      overflowY: "auto",
+      padding: "32px",
+    }}>
+      <div style={{ maxWidth: "680px", margin: "0 auto" }}>
 
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Documents</h1>
-        <p className="text-gray-500 mt-1 text-sm">
-          Upload PDFs to ask questions about them
-        </p>
-      </div>
+        {/* Header */}
+        <div style={{ marginBottom: "28px" }}>
+          <h1 style={{
+            fontSize: "20px",
+            fontWeight: "600",
+            color: "var(--text)",
+            marginBottom: "4px"
+          }}>
+            Documents
+          </h1>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Upload PDFs to ask questions about them
+          </p>
+        </div>
 
-      {/* Upload area */}
-      <div
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          const file = e.dataTransfer.files[0];
-          if (file) handleUpload(file);
-        }}
-        className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition mb-8 ${
-          dragOver
-            ? "border-blue-500 bg-blue-500/5"
-            : "border-white/10 hover:border-white/20 hover:bg-white/3"
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
+        {/* Upload area */}
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const file = e.dataTransfer.files[0];
             if (file) handleUpload(file);
           }}
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-400 text-sm">Uploading...</p>
+          style={{
+            border: `2px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
+            borderRadius: "12px",
+            padding: "36px",
+            textAlign: "center",
+            cursor: "pointer",
+            background: dragOver ? "var(--active)" : "var(--bg-secondary)",
+            transition: "all 0.15s",
+            marginBottom: "24px"
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload(file);
+            }}
+          />
+
+          {uploading ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+              <div style={{
+                width: "20px", height: "20px",
+                border: "2px solid var(--border)",
+                borderTopColor: "var(--accent)",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite"
+              }} />
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Uploading...</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
+              <div style={{
+                width: "40px", height: "40px",
+                borderRadius: "10px",
+                background: "var(--bg-tertiary)",
+                border: "1px solid var(--border)",
+                display: "flex", alignItems: "center", justifyContent: "center"
+              }}>
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "var(--text-muted)" }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <div>
+                <p style={{ fontSize: "14px", fontWeight: "500", color: "var(--text)" }}>
+                  {dragOver ? "Drop to upload" : "Upload PDF"}
+                </p>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Drag & drop or click to browse · Max 10MB
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Documents list */}
+        {documents.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              No documents yet — upload your first PDF above
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-12 h-12 bg-blue-600/10 rounded-xl flex items-center justify-center border border-blue-500/20">
-              <span className="text-2xl">📄</span>
-            </div>
-            <div>
-              <p className="text-white font-medium">Drop PDF here</p>
-              <p className="text-gray-500 text-sm mt-1">or click to browse • Max 10MB</p>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {documents.map((doc) => {
+              const s = statusConfig[doc.status] || statusConfig.pending;
+              return (
+                <div
+                  key={doc.id}
+                  className="doc-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "12px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-secondary)",
+                    transition: "all 0.15s"
+                  }}
+                >
+                  {/* PDF icon */}
+                  <div style={{
+                    width: "36px", height: "36px",
+                    borderRadius: "8px",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0
+                  }}>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "var(--text-muted)" }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: "13px",
+                      fontWeight: "500",
+                      color: "var(--text)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }}>
+                      {doc.original_name}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "3px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: s.color }}>
+                        <span style={{
+                          width: "5px", height: "5px",
+                          borderRadius: "50%",
+                          background: s.dot,
+                          animation: doc.status === "processing" ? "pulse2 1.5s infinite" : "none"
+                        }} />
+                        {s.label}
+                      </span>
+                      {doc.status === "ready" && (
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                          {doc.chunk_count} chunks
+                        </span>
+                      )}
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        {formatDate(doc.created_at)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => setConfirm({ docId: doc.id, docName: doc.original_name })}
+                    className="delete-doc-btn"
+                    style={{
+                      width: "28px", height: "28px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "var(--text-muted)",
+                      opacity: 0,
+                      transition: "all 0.15s",
+                      flexShrink: 0
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.color = "#ef4444";
+                      e.currentTarget.style.background = "rgba(239,68,68,0.1)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.color = "var(--text-muted)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
+
       </div>
 
-      {/* Documents list */}
-      {documents.length === 0 ? (
-        <div className="text-center py-12 text-gray-600">
-          No documents yet — upload your first PDF above
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="bg-[#111118] border border-white/5 rounded-xl p-4 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/20">
-                  <span>📄</span>
-                </div>
-                <div>
-                  <p className="text-white text-sm font-medium">
-                    {doc.original_name}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1">
-                    {getStatusBadge(doc.status)}
-                    {doc.status === "ready" && (
-                      <span className="text-xs text-gray-600">
-                        {doc.chunk_count} chunks
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
+      {/* Confirm dialog */}
+      {confirm && (
+        <div style={{
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 50
+        }}
+          onClick={() => setConfirm(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              padding: "24px",
+              maxWidth: "360px",
+              width: "100%",
+              margin: "16px",
+              boxShadow: "var(--shadow)"
+            }}
+          >
+            <h3 style={{ fontSize: "15px", fontWeight: "600", color: "var(--text)", marginBottom: "8px" }}>
+              Delete document?
+            </h3>
+            <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.6", marginBottom: "20px" }}>
+              <strong style={{
+                color: "var(--text)",
+                wordBreak: "break-all",
+                display: "inline-block"
+              }}>
+                "{confirm.docName}"
+              </strong>
+            </p>
+            <div style={{ display: "flex", gap: "10px" }}>
               <button
-                onClick={() => handleDelete(doc.id)}
-                className="text-gray-600 hover:text-red-400 transition text-sm px-3 py-1.5 rounded-lg hover:bg-red-500/10"
+                onClick={() => setConfirm(null)}
+                style={{
+                  flex: 1, padding: "8px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: "500"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirmed}
+                style={{
+                  flex: 1, padding: "8px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#ef4444",
+                  color: "white",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: "500"
+                }}
               >
                 Delete
               </button>
             </div>
-          ))}
+          </div>
         </div>
       )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed",
+          bottom: "20px", right: "20px",
+          padding: "10px 16px",
+          borderRadius: "10px",
+          border: "1px solid var(--border)",
+          background: "var(--bg-secondary)",
+          color: "var(--text)",
+          fontSize: "13px",
+          fontWeight: "500",
+          boxShadow: "var(--shadow)",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          zIndex: 50
+        }}>
+          <span>
+            {toast.type === "success" ? "✓" : toast.type === "error" ? "✕" : "i"}
+          </span>
+          {toast.message}
+        </div>
+      )}
+
+      <style>{`
+        .doc-row:hover .delete-doc-btn {
+          opacity: 1 !important;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse2 {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
 
     </div>
   );

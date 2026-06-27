@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import Link from "next/link";
@@ -11,88 +11,265 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState("dark");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") || "dark";
+    setTheme(saved);
+    document.documentElement.setAttribute("data-theme", saved);
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      setError(error.message);
+    // Basic validation
+    if (!email.trim()) {
+      setError("Please enter your email");
       setLoading(false);
       return;
+    }
+    if (!password) {
+      setError("Please enter your password");
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+
+    if (error) {
+      // Handle all Supabase error cases
+      switch (error.message) {
+        case "Invalid login credentials":
+          setError("Wrong email or password. Please try again.");
+          break;
+        case "Email not confirmed":
+          setError("Please verify your email first. Check your inbox.");
+          break;
+        case "Too many requests":
+          setError("Too many attempts. Please wait a few minutes.");
+          break;
+        case "User not found":
+          setError("No account found with this email.");
+          break;
+        default:
+          setError(error.message);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Check if profile exists, redirect to setup if not
+    if (data.session) {
+      try {
+        const res = await fetch("http://localhost:8000/auth/me", {
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`
+          }
+        });
+        if (!res.ok) {
+          router.push("/auth/setup");
+          return;
+        }
+      } catch (e) {
+        console.error("Profile check failed:", e);
+      }
     }
 
     router.push("/dashboard/documents");
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center p-4">
+    <div style={{
+      minHeight: "100vh",
+      background: "var(--bg)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "24px"
+    }}>
 
-      {/* Background glow */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-3xl" />
-      </div>
+      {/* Theme toggle */}
+      <button
+        onClick={toggleTheme}
+        style={{
+          position: "fixed",
+          top: "16px", right: "16px",
+          width: "36px", height: "36px",
+          borderRadius: "8px",
+          border: "1px solid var(--border)",
+          background: "var(--bg-secondary)",
+          cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "var(--text-secondary)"
+        }}
+      >
+        {theme === "dark" ? (
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+          </svg>
+        ) : (
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        )}
+      </button>
 
-      <div className="w-full max-w-md relative">
+      <div style={{ width: "100%", maxWidth: "380px" }}>
 
         {/* Logo */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-600/30">
-            <span className="text-white text-xl font-bold">D</span>
+        <div style={{ textAlign: "center", marginBottom: "32px" }}>
+          <div style={{
+            width: "40px", height: "40px",
+            borderRadius: "10px",
+            background: "var(--accent)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 14px"
+          }}>
+            <span style={{ color: "white", fontWeight: "700", fontSize: "16px" }}>D</span>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            DocMind
+          <h1 style={{
+            fontSize: "22px",
+            fontWeight: "600",
+            color: "var(--text)",
+            marginBottom: "6px"
+          }}>
+            Welcome back
           </h1>
-          <p className="text-gray-500 mt-2 text-sm">
-            Sign in to your account
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Sign in to DocMind
           </p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#111118] rounded-2xl p-8 border border-white/5 shadow-2xl">
-
-          <form onSubmit={handleLogin} className="space-y-4">
+        <div style={{
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+          borderRadius: "14px",
+          padding: "24px"
+        }}>
+          <form onSubmit={handleLogin}>
 
             {/* Email */}
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">
-                Email address
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: "500",
+                color: "var(--text-secondary)",
+                marginBottom: "6px"
+              }}>
+                Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="you@example.com"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 transition text-sm"
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  fontSize: "14px",
+                  outline: "none",
+                  transition: "border-color 0.15s",
+                  boxSizing: "border-box"
+                }}
+                onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                onBlur={e => e.target.style.borderColor = "var(--border)"}
               />
             </div>
 
             {/* Password */}
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: "500",
+                color: "var(--text-secondary)",
+                marginBottom: "6px"
+              }}>
                 Password
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 transition text-sm"
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "9px 40px 9px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg)",
+                    color: "var(--text)",
+                    fontSize: "14px",
+                    outline: "none",
+                    transition: "border-color 0.15s",
+                    boxSizing: "border-box"
+                  }}
+                  onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                  onBlur={e => e.target.style.borderColor = "var(--border)"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: "10px", top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: "4px"
+                  }}
+                >
+                  {showPassword ? (
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <span className="text-red-400 text-sm">⚠</span>
-                <p className="text-red-400 text-sm">{error}</p>
+              <div style={{
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)",
+                color: "#ef4444",
+                fontSize: "13px",
+                marginBottom: "16px"
+              }}>
+                {error}
               </div>
             )}
 
@@ -100,44 +277,66 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl py-3 transition-all duration-200 shadow-lg shadow-blue-600/20 text-sm mt-2"
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "8px",
+                border: "none",
+                background: "var(--accent)",
+                color: "white",
+                fontSize: "14px",
+                fontWeight: "500",
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.7 : 1,
+                transition: "all 0.15s",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                "Sign in"
+              {loading && (
+                <div style={{
+                  width: "14px", height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "white",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite"
+                }} />
               )}
+              {loading ? "Signing in..." : "Sign in"}
             </button>
 
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-white/5" />
-            <span className="text-xs text-gray-600">don't have an account?</span>
-            <div className="flex-1 h-px bg-white/5" />
+          <div style={{
+            textAlign: "center",
+            marginTop: "20px",
+            paddingTop: "20px",
+            borderTop: "1px solid var(--border)"
+          }}>
+            <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              Don't have an account?{" "}
+            </span>
+            <Link href="/auth/signup" style={{
+              fontSize: "13px",
+              color: "var(--accent)",
+              textDecoration: "none",
+              fontWeight: "500"
+            }}>
+              Sign up
+            </Link>
           </div>
-
-          <Link
-            href="/auth/signup"
-            className="block w-full text-center bg-white/5 hover:bg-white/8 border border-white/10 text-gray-300 hover:text-white font-medium rounded-xl py-3 transition text-sm"
-          >
-            Create account
-          </Link>
-
         </div>
 
-        <p className="text-center text-xs text-gray-600 mt-6">
-          Protected by Supabase Auth
-        </p>
-
       </div>
+
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
     </div>
   );
 }

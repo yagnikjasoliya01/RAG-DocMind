@@ -1,19 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import {
-  createSession,
-  listSessions,
-  getMessages,
-  deleteSession,
-  streamQuery,
-} from "@/lib/api";
-
-interface Session {
-  id: string;
-  title: string;
-  updated_at: string;
-}
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { getMessages, streamQuery } from "@/lib/api";
 
 interface Message {
   id?: string;
@@ -23,76 +12,58 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSession, setActiveSession] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const sessionId = searchParams.get("session");
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  async function fetchSessions() {
-    const data = await listSessions();
-    setSessions(data);
-  }
-
-  async function handleNewSession() {
-    const session = await createSession("New Chat");
-    setSessions((prev) => [session, ...prev]);
-    setActiveSession(session.id);
-    setMessages([]);
-  }
-
-  async function handleSelectSession(sessionId: string) {
-    setActiveSession(sessionId);
-    const msgs = await getMessages(sessionId);
-    setMessages(msgs);
-  }
-
-  async function handleDeleteSession(sessionId: string) {
-    await deleteSession(sessionId);
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (activeSession === sessionId) {
-      setActiveSession(null);
+    if (sessionId) {
+      loadMessages(sessionId);
+    } else {
       setMessages([]);
     }
+  }, [sessionId]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages]);
+
+  async function loadMessages(sid: string) {
+    const msgs = await getMessages(sid);
+    setMessages(msgs);
+    setTimeout(() => inputRef.current?.focus(), 100);
   }
 
   async function handleSend() {
-    if (!input.trim() || !activeSession || loading) return;
+    if (!input.trim() || !sessionId || loading) return;
 
     const question = input.trim();
     setInput("");
     setLoading(true);
 
-    // Add human message
     setMessages((prev) => [...prev, { role: "human", content: question }]);
-
-    // Add empty AI message for streaming
-    setMessages((prev) => [
-      ...prev,
-      { role: "ai", content: "", streaming: true },
-    ]);
+    setMessages((prev) => [...prev, { role: "ai", content: "", streaming: true }]);
 
     await streamQuery(
-      activeSession,
+      sessionId,
       question,
       (token) => {
         setMessages((prev) => {
+          if (prev.length === 0) return prev;
           const updated = [...prev];
           const last = updated[updated.length - 1];
-          if (last.streaming) {
-            updated[updated.length - 1] = {
-              ...last,
-              content: last.content + token,
-            };
+          if (last && last.streaming) {
+            updated[updated.length - 1] = { ...last, content: last.content + token };
           }
           return updated;
         });
@@ -104,14 +75,13 @@ export default function ChatPage() {
           return updated;
         });
         setLoading(false);
-        fetchSessions();
       },
       (error) => {
         setMessages((prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = {
             role: "ai",
-            content: `Error: ${error}`,
+            content: `Sorry, something went wrong: ${error}`,
             streaming: false,
           };
           return updated;
@@ -121,145 +91,265 @@ export default function ChatPage() {
     );
   }
 
-  return (
-    <div className="flex h-screen">
-
-      {/* Sessions sidebar */}
-      <div className="w-64 bg-[#0D0D14] border-r border-white/5 flex flex-col">
-        <div className="p-4 border-b border-white/5">
-          <button
-            onClick={handleNewSession}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl py-2.5 transition"
-          >
-            + New Chat
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {sessions.length === 0 && (
-            <p className="text-gray-600 text-xs text-center mt-8">
-              No chats yet
-            </p>
-          )}
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              onClick={() => handleSelectSession(session.id)}
-              className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition ${
-                activeSession === session.id
-                  ? "bg-blue-600/20 text-blue-400"
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="text-xs truncate flex-1">{session.title}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteSession(session.id);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition ml-2"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Chat area */}
-      <div className="flex-1 flex flex-col">
-
-        {!activeSession ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-4xl mb-4">💬</div>
-              <h2 className="text-white font-semibold text-lg mb-2">
-                Start a conversation
-              </h2>
-              <p className="text-gray-500 text-sm mb-6">
-                Create a new chat and ask questions about your documents
-              </p>
-              <button
-                onClick={handleNewSession}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl px-6 py-2.5 transition"
-              >
-                + New Chat
-              </button>
-            </div>
+  if (!sessionId) {
+    return (
+      <div style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%"
+      }}>
+        <div style={{ textAlign: "center", maxWidth: "380px", padding: "24px" }}>
+          <div style={{
+            width: "48px", height: "48px",
+            borderRadius: "12px",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 16px"
+          }}>
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "var(--text-muted)" }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
           </div>
-        ) : (
-          <>
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.length === 0 && (
-                <div className="text-center text-gray-600 text-sm mt-20">
-                  Ask anything about your uploaded documents
-                </div>
-              )}
+          <h2 style={{
+            fontSize: "18px",
+            fontWeight: "600",
+            color: "var(--text)",
+            marginBottom: "8px"
+          }}>
+            How can I help you?
+          </h2>
+          <p style={{
+            fontSize: "13px",
+            color: "var(--text-secondary)",
+            lineHeight: "1.6",
+            marginBottom: "20px"
+          }}>
+            Upload documents and start a new chat to ask questions about them.
+          </p>
+          <p style={{
+            fontSize: "12px",
+            color: "var(--text-muted)"
+          }}>
+            Click <strong style={{ color: "var(--text-secondary)" }}>New Chat</strong> in the sidebar to begin
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-              {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "human" ? "justify-end" : "justify-start"}`}
-                >
-                  {msg.role === "ai" && (
-                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center mr-3 mt-1 shrink-0">
-                      <span className="text-white text-xs font-bold">D</span>
-                    </div>
-                  )}
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      overflow: "hidden"
+    }}>
 
-                  <div
-                    className={`max-w-2xl rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === "human"
-                        ? "bg-blue-600 text-white rounded-tr-sm"
-                        : "bg-[#111118] border border-white/5 text-gray-200 rounded-tl-sm"
-                    }`}
-                  >
-                    {msg.content}
-                    {msg.streaming && (
-                      <span className="inline-block w-1.5 h-4 bg-blue-400 ml-1 animate-pulse rounded-sm" />
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
+      {/* Messages */}
+      <div
+        ref={messagesContainerRef}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "24px",
+        }}
+      >
+        <div style={{ maxWidth: "720px", margin: "0 auto" }}>
 
-            {/* Input */}
-            <div className="p-4 border-t border-white/5">
-              <div className="flex gap-3 bg-[#111118] border border-white/10 rounded-2xl p-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                  placeholder="Ask about your documents..."
-                  disabled={loading}
-                  className="flex-1 bg-transparent text-white placeholder-gray-600 text-sm px-3 py-2 focus:outline-none"
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={loading || !input.trim()}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2 text-sm font-medium transition"
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                      </svg>
-                      ...
-                    </span>
-                  ) : "Send"}
-                </button>
-              </div>
-              <p className="text-xs text-gray-700 text-center mt-2">
-                Press Enter to send
+          {messages.length === 0 && (
+            <div style={{ textAlign: "center", paddingTop: "60px" }}>
+              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                Ask anything about your uploaded documents
               </p>
             </div>
-          </>
-        )}
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {messages.map((msg, i) => (
+              <div key={i}>
+                {msg.role === "human" ? (
+                  /* Human message */
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{
+                      maxWidth: "80%",
+                      background: "var(--bg-secondary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "16px 16px 4px 16px",
+                      padding: "10px 14px",
+                      fontSize: "14px",
+                      color: "var(--text)",
+                      lineHeight: "1.6"
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  /* AI message */
+                  <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                    <div style={{
+                      width: "28px", height: "28px",
+                      borderRadius: "8px",
+                      background: "var(--accent)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0,
+                      marginTop: "2px"
+                    }}>
+                      <span style={{ color: "white", fontSize: "11px", fontWeight: "700" }}>D</span>
+                    </div>
+                    <div style={{
+                      flex: 1,
+                      fontSize: "14px",
+                      color: "var(--text)",
+                      lineHeight: "1.7",
+                      paddingTop: "4px"
+                    }}>
+                      {msg.content || (
+                        <span style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <span style={{
+                            width: "6px", height: "6px",
+                            borderRadius: "50%",
+                            background: "var(--text-muted)",
+                            animation: "bounce 1s infinite",
+                            animationDelay: "0ms"
+                          }} />
+                          <span style={{
+                            width: "6px", height: "6px",
+                            borderRadius: "50%",
+                            background: "var(--text-muted)",
+                            animation: "bounce 1s infinite",
+                            animationDelay: "150ms"
+                          }} />
+                          <span style={{
+                            width: "6px", height: "6px",
+                            borderRadius: "50%",
+                            background: "var(--text-muted)",
+                            animation: "bounce 1s infinite",
+                            animationDelay: "300ms"
+                          }} />
+                        </span>
+                      )}
+                      {msg.streaming && msg.content && (
+                        <span style={{
+                          display: "inline-block",
+                          width: "2px", height: "14px",
+                          background: "var(--accent)",
+                          marginLeft: "2px",
+                          animation: "pulse 1s infinite",
+                          borderRadius: "1px",
+                          verticalAlign: "middle"
+                        }} />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div ref={messagesEndRef} />
+        </div>
       </div>
+
+      {/* Input */}
+      <div style={{
+        padding: "16px 24px 20px",
+        borderTop: "1px solid var(--border)",
+        background: "var(--bg)"
+      }}>
+        <div style={{ maxWidth: "720px", margin: "0 auto" }}>
+          <div style={{
+            display: "flex",
+            gap: "10px",
+            alignItems: "flex-end",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            borderRadius: "12px",
+            padding: "10px 12px",
+          }}>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Ask about your documents..."
+              disabled={loading}
+              rows={1}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                fontSize: "14px",
+                color: "var(--text)",
+                lineHeight: "1.5",
+                minHeight: "24px",
+                maxHeight: "120px",
+                fontFamily: "inherit",
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+              style={{
+                width: "32px", height: "32px",
+                borderRadius: "8px",
+                border: "none",
+                background: input.trim() && !loading ? "var(--accent)" : "var(--bg-tertiary)",
+                color: input.trim() && !loading ? "white" : "var(--text-muted)",
+                cursor: input.trim() && !loading ? "pointer" : "not-allowed",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+                transition: "all 0.15s"
+              }}
+            >
+              {loading ? (
+                <div style={{
+                  width: "14px", height: "14px",
+                  border: "2px solid currentColor",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite"
+                }} />
+              ) : (
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <p style={{
+            fontSize: "11px",
+            color: "var(--text-muted)",
+            textAlign: "center",
+            marginTop: "8px"
+          }}>
+            Enter to send · Shift+Enter for new line
+          </p>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
     </div>
   );
 }
