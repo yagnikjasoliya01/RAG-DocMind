@@ -86,42 +86,55 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "human", content: question }]);
     setMessages((prev) => [...prev, { role: "ai", content: "", streaming: true }]);
 
-    await streamQuery(
-      sessionId,
-      question,
-      (token) => {
-        setMessages((prev) => {
-          if (prev.length === 0) return prev;
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last && last.streaming) {
-            updated[updated.length - 1] = { ...last, content: last.content + token };
-          }
-          return updated;
-        });
-      },
-      () => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1].streaming = false;
-          return updated;
-        });
-        setLoading(false);
-      },
-      (error) => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "ai",
-            content: `Sorry, something went wrong: ${error}`,
-            streaming: false,
-          };
-          return updated;
-        });
-        setLoading(false);
-      },
-      selectedDocs
-    );
+    try {
+      await streamQuery(
+        sessionId,
+        question,
+        (token) => {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.streaming) {
+              updated[updated.length - 1] = { ...last, content: last.content + token };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1].streaming = false;
+            return updated;
+          });
+          setLoading(false);
+        },
+        (error) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: "ai",
+              content: `Sorry, something went wrong: ${error}`,
+              streaming: false,
+            };
+            return updated;
+          });
+          setLoading(false);
+        },
+        selectedDocs
+      );
+    } catch (err) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: "ai",
+          content: "Invalid input detected. Please rephrase your question.",
+          streaming: false,
+        };
+        return updated;
+      });
+      setLoading(false);
+    }
   }
 
   if (!sessionId) {

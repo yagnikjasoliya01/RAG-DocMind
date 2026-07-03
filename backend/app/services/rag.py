@@ -6,6 +6,7 @@ from app.services.embeddings import embed_query
 from app.services.vector_store import search_chunks
 from app.core.config import get_settings
 from app.services.reranker import rerank_chunks
+from app.services.hybrid_search import hybrid_search
 
 settings = get_settings()
 
@@ -69,16 +70,16 @@ async def get_rag_response(
     # ── Step 1: Embed the question ────────────────────────────
     query_embedding = embed_query(question)
 
-    # ── Step 2: Search ChromaDB ───────────────────────────────
-    # Get more chunks initially for reranking
-    chunks = search_chunks(
+    # ── Step 3: Hybrid Search ─────────────────────────────────
+    chunks = hybrid_search(
+        question=question,
         query_embedding=query_embedding,
         user_id=user_id,
-        n_results=10,
-        document_ids=document_ids
+        document_ids=document_ids,
+        n_results=10
     )
 
-    # Rerank to get best 5
+    # ── Step 4: Rerank to get best 5 ─────────────────────────
     chunks = rerank_chunks(query=question, chunks=chunks, top_n=5)
 
     # ── Step 3: Format context ────────────────────────────────

@@ -9,10 +9,15 @@ from app.schemas.chat import (
 )
 from pydantic import BaseModel
 from app.services.rag import get_rag_response
+from app.core.rate_limiter import rate_limit_chat
+from app.core.security import sanitize_input
+from app.services.cache import get_cached_response, set_cached_response
+from app.services.metrics import metrics
+import time
+import io
+import json
 
 router = APIRouter()
-
-import io
 
 @router.get("/sessions/{session_id}/export")
 async def export_session(
@@ -202,12 +207,15 @@ async def query(
     body: QueryRequest,
     user_id: str = Depends(get_current_user)
 ):
-    """
-    Main RAG endpoint — streams answer tokens via SSE.
-    """
     supabase = get_supabase_admin()
 
-    # ── Verify session belongs to user ────────────────────────
+    # ── Rate limiting ─────────────────────────────────────
+    rate_limit_chat(user_id)
+
+    # ── Security: sanitize input ──────────────────────────
+    question = sanitize_input(body.question)
+
+    # ── Verify session ────────────────────────────────────
     session = supabase.table("chat_sessions")\
         .select("id")\
         .eq("id", session_id)\
@@ -218,7 +226,52 @@ async def query(
     if not session.data:
         raise HTTPException(404, "Session not found")
 
-    # ── Load chat history ─────────────────────────────────────
+    # ── Check cache ───────────────────────────────────────
+    cached = get_cached_response(user_id, question, body.document_ids)
+    if cached:
+        print(f"⚡ Cache hit for: {question[:50]}")
+
+        # Save to DB
+        history_result = supabase.table("chat_messages")\
+            .select("role, content")\
+            .eq("session_id", session_id)\
+            .order("created_at")\
+            .limit(10)\
+            .execute()
+
+        supabase.table("chat_messages").insert({
+            "session_id": session_id,
+            "user_id": user_id,
+            "role": "human",
+            "content": question
+        }).execute()
+
+        supabase.table("chat_messages").insert({
+            "session_id": session_id,
+            "user_id": user_id,
+            "role": "ai",
+            "content": cached,
+            "source_chunks": []
+        }).execute()
+
+        async def cached_stream():
+            # Stream cached response token by token
+            words = cached.split(" ")
+            for word in words:
+                yield f"data: {json.dumps({'token': word + ' '})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'cached': True})}\n\n"
+
+        return StreamingResponse(
+            cached_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    # ── Load chat history ─────────────────────────────────
     history_result = supabase.table("chat_messages")\
         .select("role, content")\
         .eq("session_id", session_id)\
@@ -228,33 +281,41 @@ async def query(
 
     chat_history = history_result.data or []
 
-    # ── Save human message ────────────────────────────────────
+    # ── Save human message ────────────────────────────────
     supabase.table("chat_messages").insert({
         "session_id": session_id,
         "user_id": user_id,
         "role": "human",
-        "content": body.question
+        "content": question
     }).execute()
 
-    # ── Stream response ───────────────────────────────────────
+    # ── Stream response ───────────────────────────────────
     async def stream():
         full_response = ""
         source_chunks = []
+        start_time = time.time()
 
         try:
             async for token, chunks, accumulated in get_rag_response(
-                question=body.question,
+                question=question,
                 user_id=user_id,
                 chat_history=chat_history,
                 document_ids=body.document_ids
             ):
                 full_response = accumulated
                 source_chunks = chunks
-
-                # Send token to frontend
                 yield f"data: {json.dumps({'token': token})}\n\n"
 
-            # ── Save AI response to DB ────────────────────────
+            # ── Cache the response ────────────────────────
+            if full_response:
+                set_cached_response(
+                    user_id=user_id,
+                    question=question,
+                    document_ids=body.document_ids,
+                    response=full_response
+                )
+
+            # ── Save AI response ──────────────────────────
             supabase.table("chat_messages").insert({
                 "session_id": session_id,
                 "user_id": user_id,
@@ -270,16 +331,31 @@ async def query(
                 ]
             }).execute()
 
-            # ── Update session updated_at ─────────────────────
+            # ── Update session ────────────────────────────
             supabase.table("chat_sessions").update({
                 "updated_at": "now()",
-                "title": body.question[:50]
+                "title": question[:50]
             }).eq("id", session_id).execute()
 
-            # ── Send done signal ──────────────────────────────
+            # ── Log metrics ───────────────────────────────
+            metrics.log_query(
+                user_id=user_id,
+                question=question,
+                response_time_ms=(time.time() - start_time) * 1000,
+                chunks_retrieved=len(source_chunks),
+                cached=False
+            )
+
             yield f"data: {json.dumps({'done': True})}\n\n"
 
         except Exception as e:
+            metrics.log_query(
+                user_id=user_id,
+                question=question,
+                response_time_ms=(time.time() - start_time) * 1000,
+                chunks_retrieved=0,
+                error=str(e)
+            )
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(

@@ -9,6 +9,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from app.core.config import get_settings
+from app.services.contextual_retrieval import add_context_to_chunks
+from app.services.metrics import metrics
+import time
 settings = get_settings()
 
 @celery_app.task(bind=True, max_retries=3)
@@ -20,6 +23,9 @@ def process_document(self, document_id: str, user_id: str):
     supabase = get_supabase_admin()
 
     try:
+
+        start_time = time.time()
+
         # ── Update status to processing ───────────────────────
         supabase.table("documents")\
             .update({"status": "processing"})\
@@ -80,8 +86,16 @@ def process_document(self, document_id: str, user_id: str):
         if not chunks:
             raise ValueError("No chunks created from document")
 
-        # ── Generate embeddings ───────────────────────────────
-        embeddings = embed_texts(chunks)
+        # ── Add contextual information to chunks ──────────────
+        print(f"Adding context to {len(chunks)} chunks...")
+        contextualized_chunks = add_context_to_chunks(
+            chunks=chunks,
+            full_text=text,
+            document_name=doc["original_name"]
+        )
+
+        # ── Generate embeddings on contextualized chunks ──────
+        embeddings = embed_texts(contextualized_chunks)
 
         # ── Prepare data for ChromaDB ─────────────────────────
         chunk_ids = [str(uuid.uuid4()) for _ in chunks]
@@ -95,22 +109,23 @@ def process_document(self, document_id: str, user_id: str):
             for i in range(len(chunks))
         ]
 
-        # ── Store in ChromaDB ─────────────────────────────────
+        # ── Store contextualized chunks in ChromaDB ───────────
         upsert_chunks(
-            chunks=chunks,
+            chunks=contextualized_chunks,
             embeddings=embeddings,
             chunk_ids=chunk_ids,
             metadatas=metadatas
         )
 
-        # ── Save chunk metadata to Postgres ───────────────────
+        # ── Save original chunks to Postgres ─────────────────
+        # Store original chunks (not contextualized) for display
         chunk_rows = [
             {
                 "id": chunk_ids[i],
                 "document_id": document_id,
                 "user_id": user_id,
                 "chunk_index": i,
-                "content": chunks[i],
+                "content": chunks[i],          # original chunk for display
                 "token_count": len(chunks[i].split()),
                 "vector_id": chunk_ids[i],
             }
@@ -129,7 +144,15 @@ def process_document(self, document_id: str, user_id: str):
             "chunk_count": len(chunks),
         }).eq("id", document_id).execute()
 
-        print(f"✅ Document {document_id} processed: {len(chunks)} chunks")
+        processing_time = (time.time() - start_time) * 1000
+        metrics.log_upload(
+            user_id=user_id,
+            filename=doc["original_name"],
+            file_size=doc.get("file_size", 0),
+            chunk_count=len(chunks),
+            processing_time_ms=processing_time
+        )
+        print(f"✅ Document {document_id} processed: {len(chunks)} chunks in {processing_time:.0f}ms")
         return {"status": "ready", "chunks": len(chunks)}
 
     except Exception as e:

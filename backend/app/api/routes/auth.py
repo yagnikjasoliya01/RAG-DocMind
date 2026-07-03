@@ -121,3 +121,9 @@ async def delete_account(user_id: str = Depends(get_current_user)):
     supabase.auth.admin.delete_user(user_id)
 
     return {"message": "Account deleted"}
+
+@router.get("/metrics")
+async def get_metrics(user_id: str = Depends(get_current_user)):
+    """Returns system metrics — admin use only."""
+    from app.services.metrics import metrics
+    return metrics.get_stats()

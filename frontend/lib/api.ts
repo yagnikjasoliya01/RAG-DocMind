@@ -101,6 +101,11 @@ export async function streamQuery(
     }
   );
 
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Request failed");
+  }
+
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
 

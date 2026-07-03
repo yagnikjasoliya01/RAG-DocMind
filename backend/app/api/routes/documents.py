@@ -10,6 +10,8 @@ from app.services.storage import upload_file_to_supabase, delete_file_from_supab
 from pydantic import BaseModel
 from typing import Optional
 from app.services.vector_store import delete_document_chunks
+from app.core.rate_limiter import rate_limit_upload
+from app.core.security import sanitize_input
 
 router = APIRouter()
 
@@ -40,6 +42,9 @@ async def upload_document(
     file: UploadFile = File(...),
     user_id: str = Depends(get_current_user)
 ):
+    # ── Rate limiting ─────────────────────────────────────
+    rate_limit_upload(user_id)
+
     # ── Validate file ─────────────────────────────────────────
     file_ext = "." + file.filename.split(".")[-1].lower()
     if file.content_type not in ALLOWED_TYPES and file_ext not in ALLOWED_EXTENSIONS:
