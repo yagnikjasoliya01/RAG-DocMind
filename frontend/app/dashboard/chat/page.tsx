@@ -6,7 +6,9 @@ import {
   getMessages,
   streamQuery,
   listDocuments,
+  exportChat,
 } from "@/lib/api";
+
 
 interface Message {
   id?: string;
@@ -26,6 +28,7 @@ export default function ChatPage() {
   const [documents, setDocuments] = useState<{ id: string, original_name: string }[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [showDocFilter, setShowDocFilter] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const filterRef = useRef<HTMLDivElement>(null);
 
@@ -177,6 +180,118 @@ export default function ChatPage() {
       height: "100%",
       overflow: "hidden"
     }}>
+
+      {/* Chat header with export */}
+      <div style={{
+        padding: "12px 24px",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "8px"
+      }}>
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowExport(!showExport)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 12px",
+              borderRadius: "7px",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: "12px",
+              cursor: "pointer",
+              transition: "all 0.15s"
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          >
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export
+          </button>
+
+          {showExport && (
+            <>
+              <div
+                style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                onClick={() => setShowExport(false)}
+              />
+              <div style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                padding: "6px",
+                zIndex: 50,
+                minWidth: "140px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.15)"
+              }}>
+                <button
+                  onClick={async () => {
+                    setShowExport(false);
+                    await exportChat(sessionId!, "markdown");
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "7px 10px",
+                    borderRadius: "7px",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text)",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    textAlign: "left"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Markdown (.md)
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowExport(false);
+                    await exportChat(sessionId!, "pdf");
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "7px 10px",
+                    borderRadius: "7px",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text)",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    textAlign: "left"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  PDF (.pdf)
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Messages */}
       <div

@@ -1,6 +1,6 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from app.core.auth import get_current_user
 from app.db.supabase import get_supabase_admin
 from app.schemas.chat import (
@@ -11,6 +11,141 @@ from pydantic import BaseModel
 from app.services.rag import get_rag_response
 
 router = APIRouter()
+
+import io
+
+@router.get("/sessions/{session_id}/export")
+async def export_session(
+    session_id: str,
+    format: str = "markdown",
+    user_id: str = Depends(get_current_user)
+):
+    """Export chat session as markdown or PDF."""
+    supabase = get_supabase_admin()
+
+    # Get session
+    session = supabase.table("chat_sessions")\
+        .select("*")\
+        .eq("id", session_id)\
+        .eq("user_id", user_id)\
+        .execute()
+
+    if not session.data:
+        raise HTTPException(404, "Session not found")
+
+    # Get messages
+    messages = supabase.table("chat_messages")\
+        .select("*")\
+        .eq("session_id", session_id)\
+        .order("created_at")\
+        .execute()
+
+    title = session.data[0]["title"]
+    created_at = session.data[0]["created_at"][:10]
+
+    # Build markdown
+    md = f"# {title}\n\n"
+    md += f"**Date:** {created_at}\n\n"
+    md += "---\n\n"
+
+    for msg in messages.data:
+        if msg["role"] == "human":
+            md += f"**You:** {msg['content']}\n\n"
+        else:
+            md += f"**DocMind:** {msg['content']}\n\n"
+        md += "---\n\n"
+
+    if format == "markdown":
+        return Response(
+            content=md,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": f'attachment; filename="{title}.md"'
+            }
+        )
+
+    # PDF export
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=20*mm,
+            leftMargin=20*mm,
+            topMargin=20*mm,
+            bottomMargin=20*mm
+        )
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "Title",
+            parent=styles["Heading1"],
+            fontSize=18,
+            spaceAfter=6
+        )
+        date_style = ParagraphStyle(
+            "Date",
+            parent=styles["Normal"],
+            fontSize=10,
+            textColor=colors.grey,
+            spaceAfter=12
+        )
+        human_style = ParagraphStyle(
+            "Human",
+            parent=styles["Normal"],
+            fontSize=11,
+            fontName="Helvetica-Bold",
+            spaceAfter=6
+        )
+        ai_style = ParagraphStyle(
+            "AI",
+            parent=styles["Normal"],
+            fontSize=11,
+            spaceAfter=12,
+            leading=16
+        )
+
+        story = []
+        story.append(Paragraph(title, title_style))
+        story.append(Paragraph(f"Date: {created_at}", date_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.lightgrey))
+        story.append(Spacer(1, 12))
+
+        for msg in messages.data:
+            if msg["role"] == "human":
+                story.append(Paragraph(f"You: {msg['content']}", human_style))
+            else:
+                content = msg["content"].replace("\n", "<br/>")
+                story.append(Paragraph(f"DocMind: {content}", ai_style))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
+            story.append(Spacer(1, 8))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        return Response(
+            content=buffer.read(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{title}.pdf"'
+            }
+        )
+
+    except ImportError:
+        # reportlab not installed, return markdown instead
+        return Response(
+            content=md,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": f'attachment; filename="{title}.md"'
+            }
+        )
 
 
 @router.post("/sessions", response_model=SessionResponse)

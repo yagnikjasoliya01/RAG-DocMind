@@ -13,8 +13,16 @@ from app.services.vector_store import delete_document_chunks
 
 router = APIRouter()
 
-ALLOWED_TYPES = ["application/pdf"]
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_TYPES = [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/plain",
+    "text/markdown",
+]
+ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt", ".md"]
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 class DocumentResponse(BaseModel):
@@ -33,8 +41,9 @@ async def upload_document(
     user_id: str = Depends(get_current_user)
 ):
     # ── Validate file ─────────────────────────────────────────
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(400, "Only PDF files are allowed")
+    file_ext = "." + file.filename.split(".")[-1].lower()
+    if file.content_type not in ALLOWED_TYPES and file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"File type not supported. Allowed: PDF, JPG, PNG, WEBP, TXT, MD")
 
     file_bytes = await file.read()
 

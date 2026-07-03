@@ -2,7 +2,7 @@ import uuid
 from celery import shared_task
 from app.tasks.celery_app import celery_app
 from app.db.supabase import get_supabase_admin
-from app.services.pdf_extractor import extract_text_from_pdf
+from app.services.pdf_extractor import extract_text_from_file
 from app.services.embeddings import embed_texts
 from app.services.vector_store import upsert_chunks, delete_document_chunks
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -42,7 +42,11 @@ def process_document(self, document_id: str, user_id: str):
             .download(storage_path)
 
         # ── Extract text ──────────────────────────────────────
-        text = extract_text_from_pdf(file_bytes)
+        text = extract_text_from_file(
+            file_bytes=file_bytes,
+            filename=doc["original_name"],
+            mime_type=doc["mime_type"]
+        )
 
         if not text:
             raise ValueError("No text could be extracted from this PDF")

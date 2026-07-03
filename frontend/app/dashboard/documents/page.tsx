@@ -83,8 +83,10 @@ export default function DocumentsPage() {
   }
 
   async function handleUpload(file: File) {
-    if (!file.name.endsWith(".pdf")) {
-      showToast("Only PDF files are allowed", "error");
+    const allowed = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt", ".md"];
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!allowed.includes(ext)) {
+      showToast("Supported: PDF, JPG, PNG, WEBP, TXT, MD", "error");
       return;
     }
     setUploading(true);
@@ -215,7 +217,7 @@ export default function DocumentsPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.md"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -252,7 +254,7 @@ export default function DocumentsPage() {
                   {dragOver ? "Drop to upload" : "Upload PDF"}
                 </p>
                 <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                  Drag & drop or click to browse · Max 10MB
+                  PDF, JPG, PNG, TXT, MD · Max 20MB
                 </p>
               </div>
             </div>
@@ -590,7 +592,7 @@ export default function DocumentsPage() {
                 </span>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
-                
+
                 <a href={previewDoc.url}
                   target="_blank"
                   rel="noopener noreferrer"

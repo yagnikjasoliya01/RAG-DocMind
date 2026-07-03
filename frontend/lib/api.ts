@@ -128,3 +128,18 @@ export async function getDocumentPreviewUrl(docId: string) {
   const res = await authFetch(`/documents/${docId}/preview-url`);
   return res.json();
 }
+
+export async function exportChat(sessionId: string, format: "markdown" | "pdf") {
+  const token = await getToken();
+  const res = await fetch(`${API_URL}/chat/sessions/${sessionId}/export?format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = format === "pdf" ? "chat.pdf" : "chat.md";
+  a.click();
+  URL.revokeObjectURL(url);
+}
