@@ -36,7 +36,7 @@ export default function SetupPage() {
       return;
     }
 
-    const res = await fetch("http://localhost:8000/auth/profile", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/profile`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${data.session.access_token}`,

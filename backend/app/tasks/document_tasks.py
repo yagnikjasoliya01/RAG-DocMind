@@ -165,4 +165,4 @@ def process_document(self, document_id: str, user_id: str):
         }).eq("id", document_id).execute()
 
         # Retry up to 3 times
-        raise self.retry(exc=e, countdown=60)
+        raise self.retry(exc=e, countdown=10)

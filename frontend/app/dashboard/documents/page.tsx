@@ -107,7 +107,7 @@ export default function DocumentsPage() {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
 
-    const res = await fetch(`http://localhost:8000/documents/${docId}/progress`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/documents/${docId}/progress`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 

@@ -29,3 +29,22 @@ app.include_router(chat.router,      prefix="/chat",      tags=["chat"])
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "environment": settings.environment}
+
+import time
+import logging
+from fastapi import Request
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = (time.time() - start) * 1000
+    logger.info(
+        f"{request.method} {request.url.path} "
+        f"→ {response.status_code} "
+        f"({duration:.0f}ms)"
+    )
+    return response

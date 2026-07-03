@@ -12,6 +12,7 @@ from typing import Optional
 from app.services.vector_store import delete_document_chunks
 from app.core.rate_limiter import rate_limit_upload
 from app.core.security import sanitize_input
+from app.services.cache import invalidate_user_cache
 
 router = APIRouter()
 
@@ -185,6 +186,8 @@ async def delete_document(
         .eq("id", doc_id)\
         .eq("user_id", user_id)\
         .execute()
+    
+    invalidate_user_cache(user_id)
 
     return {"message": "Document deleted successfully"}
 

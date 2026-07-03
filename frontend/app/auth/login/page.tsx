@@ -76,7 +76,7 @@ export default function LoginPage() {
     // Check if profile exists, redirect to setup if not
     if (data.session) {
       try {
-        const res = await fetch("http://localhost:8000/auth/me", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/me`, {
           headers: {
             Authorization: `Bearer ${data.session.access_token}`
           }

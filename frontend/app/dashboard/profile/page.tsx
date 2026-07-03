@@ -33,7 +33,7 @@ export default function ProfilePage() {
     }
     setEmail(data.session.user.email || "");
 
-    const res = await fetch("http://localhost:8000/auth/me", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/me`, {
       headers: { Authorization: `Bearer ${data.session.access_token}` }
     });
     const profile = await res.json();
@@ -67,7 +67,7 @@ export default function ProfilePage() {
     }
 
     const { data } = await supabase.auth.getSession();
-    const res = await fetch("http://localhost:8000/auth/profile", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/profile`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${data.session?.access_token}`,
@@ -130,7 +130,7 @@ export default function ProfilePage() {
 
     // Delete all user data from backend
     try {
-      await fetch("http://localhost:8000/auth/account", {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/account`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${data.session?.access_token}`

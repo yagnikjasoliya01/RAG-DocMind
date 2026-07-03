@@ -60,7 +60,7 @@ export default function DashboardLayout({
       setEmail(data.session.user.email || "");
 
       // Fetch username from backend
-      const res = await fetch("http://localhost:8000/auth/me", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/auth/me`, {
         headers: {
           Authorization: `Bearer ${data.session.access_token}`
         }
