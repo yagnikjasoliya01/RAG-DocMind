@@ -1,6 +1,6 @@
 # DocMind — AI Document Q&A
 
-Upload your documents and chat with them using AI.
+Upload your documents and chat with them using AI. (Production Release)
 
 ## What it does
 
