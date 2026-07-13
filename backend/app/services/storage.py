@@ -29,10 +29,3 @@ def upload_file_to_supabase(
 def delete_file_from_supabase(supabase: Client, storage_path: str):
     """Deletes file from Supabase Storage."""
     supabase.storage.from_("documents").remove([storage_path])
-
-
-def get_signed_url(supabase: Client, storage_path: str, expires_in: int = 3600) -> str:
-    """Returns a temporary signed URL to access the file."""
-    result = supabase.storage.from_("documents")\
-        .create_signed_url(storage_path, expires_in)
-    return result["signedURL"]

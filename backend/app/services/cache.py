@@ -1,9 +1,11 @@
 import json
 import hashlib
+import logging
 import redis
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Redis client
 _redis = None
@@ -31,7 +33,7 @@ def get_cached_response(
         key = _make_cache_key(user_id, question, document_ids)
         return get_redis().get(key)
     except Exception as e:
-        print(f"Cache get failed: {e}")
+        logger.warning(f"Cache get failed: {e}")
         return None
 
 
@@ -46,9 +48,9 @@ def set_cached_response(
     try:
         key = _make_cache_key(user_id, question, document_ids)
         get_redis().setex(key, ttl, response)
-        print(f"✅ Response cached")
+        logger.debug("Response cached successfully")
     except Exception as e:
-        print(f"Cache set failed: {e}")
+        logger.warning(f"Cache set failed: {e}")
 
 
 def invalidate_user_cache(user_id: str) -> None:
@@ -59,4 +61,4 @@ def invalidate_user_cache(user_id: str) -> None:
         if keys:
             r.delete(*keys)
     except Exception as e:
-        print(f"Cache invalidation failed: {e}")
+        logger.warning(f"Cache invalidation failed: {e}")

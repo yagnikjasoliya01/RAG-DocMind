@@ -1,4 +1,6 @@
 import uuid
+import time
+import logging
 from celery import shared_task
 from app.tasks.celery_app import celery_app
 from app.db.supabase import get_supabase_admin
@@ -11,8 +13,10 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from app.core.config import get_settings
 from app.services.contextual_retrieval import add_context_to_chunks
 from app.services.metrics import metrics
-import time
+
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
 
 @celery_app.task(bind=True, max_retries=3)
 def process_document(self, document_id: str, user_id: str):
@@ -87,7 +91,7 @@ def process_document(self, document_id: str, user_id: str):
             raise ValueError("No chunks created from document")
 
         # ── Add contextual information to chunks ──────────────
-        print(f"Adding context to {len(chunks)} chunks...")
+        logger.info(f"Adding context to {len(chunks)} chunks for document {document_id}")
         contextualized_chunks = add_context_to_chunks(
             chunks=chunks,
             full_text=text,
@@ -152,11 +156,14 @@ def process_document(self, document_id: str, user_id: str):
             chunk_count=len(chunks),
             processing_time_ms=processing_time
         )
-        print(f"✅ Document {document_id} processed: {len(chunks)} chunks in {processing_time:.0f}ms")
+        logger.info(
+            f"Document {document_id} processed: "
+            f"{len(chunks)} chunks in {processing_time:.0f}ms"
+        )
         return {"status": "ready", "chunks": len(chunks)}
 
     except Exception as e:
-        print(f"❌ Error processing document {document_id}: {e}")
+        logger.error(f"Error processing document {document_id}: {e}")
 
         # Update status to error
         supabase.table("documents").update({

@@ -1,9 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.auth import get_current_user
 from app.db.supabase import get_supabase_admin
 from pydantic import BaseModel
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -47,7 +49,7 @@ async def create_profile(
     user_id: str = Depends(get_current_user)
 ):
     supabase = get_supabase_admin()
-    print(f"Creating profile - user_id: {user_id}, username: {body.username}")
+    logger.debug(f"Creating profile for user_id: {user_id}")
 
     # Check username taken
     existing = supabase.table("user_profiles")\
@@ -108,7 +110,7 @@ async def delete_account(user_id: str = Depends(get_current_user)):
         try:
             supabase.storage.from_("documents")\
                 .remove([doc["storage_path"]])
-        except:
+        except Exception:
             pass
 
     # Delete from DB (cascades to chunks, sessions, messages)

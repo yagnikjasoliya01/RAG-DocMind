@@ -1,7 +1,9 @@
+import logging
 from groq import Groq
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 CONTEXT_PROMPT = """Here is a document:
 <document>
@@ -55,10 +57,10 @@ def add_context_to_chunks(
             contextualized_chunk = f"{context}\n\n{chunk}"
             contextualized.append(contextualized_chunk)
 
-            print(f"✅ Contextualized chunk {i+1}/{len(chunks)}")
+            logger.info(f"Contextualized chunk {i+1}/{len(chunks)}")
 
         except Exception as e:
-            print(f"⚠️ Context generation failed for chunk {i+1}: {e}")
+            logger.warning(f"Context generation failed for chunk {i+1}: {e}")
             contextualized.append(chunk)
 
     return contextualized

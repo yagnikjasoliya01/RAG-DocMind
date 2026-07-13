@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+import time
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.api.routes import auth, documents, chat
 
 settings = get_settings()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="DocMind API",
@@ -30,12 +35,6 @@ app.include_router(chat.router,      prefix="/chat",      tags=["chat"])
 async def health_check():
     return {"status": "ok", "environment": settings.environment}
 
-import time
-import logging
-from fastapi import Request
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

@@ -1,4 +1,7 @@
 import json
+import time
+import io
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from app.core.auth import get_current_user
@@ -13,10 +16,8 @@ from app.core.rate_limiter import rate_limit_chat
 from app.core.security import sanitize_input
 from app.services.cache import get_cached_response, set_cached_response
 from app.services.metrics import metrics
-import time
-import io
-import json
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/sessions/{session_id}/export")
@@ -229,7 +230,7 @@ async def query(
     # ── Check cache ───────────────────────────────────────
     cached = get_cached_response(user_id, question, body.document_ids)
     if cached:
-        print(f"⚡ Cache hit for: {question[:50]}")
+        logger.info(f"Cache hit for query (length={len(question)})")
 
         # Save to DB
         history_result = supabase.table("chat_messages")\

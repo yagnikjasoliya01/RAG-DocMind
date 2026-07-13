@@ -1,5 +1,8 @@
 import re
+import logging
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 # Prompt injection patterns
 INJECTION_PATTERNS = [
@@ -18,9 +21,9 @@ INJECTION_PATTERNS = [
 # PII patterns to mask
 PII_PATTERNS = {
     "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-    "phone": r'\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
+    "phone": r'\b(\+?\d{1,3}[-.\\s]?)?\(?\d{3}\)?[-.\\s]?\d{3}[-.\\s]?\d{4}\b',
     "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
-    "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+    "credit_card": r'\b\d{4}[-\\s]?\d{4}[-\\s]?\d{4}[-\\s]?\d{4}\b',
 }
 
 

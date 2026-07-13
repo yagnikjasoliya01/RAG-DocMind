@@ -44,7 +44,8 @@ def check_rate_limit(
         raise
     except Exception as e:
         # Don't block requests if Redis is down
-        print(f"Rate limiter error: {e}")
+        import logging
+        logging.getLogger(__name__).warning(f"Rate limiter error: {e}")
 
 
 # Preset limits
@@ -55,7 +56,3 @@ def rate_limit_chat(user_id: str) -> None:
 def rate_limit_upload(user_id: str) -> None:
     """10 uploads per hour."""
     check_rate_limit(user_id, "upload", max_requests=10, window_seconds=3600)
-
-def rate_limit_auth(user_id: str) -> None:
-    """5 auth attempts per minute."""
-    check_rate_limit(user_id, "auth", max_requests=5, window_seconds=60)

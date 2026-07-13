@@ -1,9 +1,11 @@
 import time
 import json
+import logging
 from datetime import datetime
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class MetricsLogger:
@@ -58,10 +60,13 @@ class MetricsLogger:
             r.lpush("metrics:response_times", response_time_ms)
             r.ltrim("metrics:response_times", 0, 99)
 
-            print(f"📊 Query metrics: {response_time_ms:.0f}ms | chunks={chunks_retrieved} | cached={cached}")
+            logger.info(
+                f"Query metrics: {response_time_ms:.0f}ms | "
+                f"chunks={chunks_retrieved} | cached={cached}"
+            )
 
         except Exception as e:
-            print(f"Metrics logging failed: {e}")
+            logger.warning(f"Metrics logging failed: {e}")
 
     def log_upload(
         self,
@@ -89,10 +94,13 @@ class MetricsLogger:
             r.ltrim("metrics:uploads", 0, 999)
             r.incr("metrics:total_uploads")
 
-            print(f"📊 Upload metrics: {filename} | {chunk_count} chunks | {processing_time_ms:.0f}ms")
+            logger.info(
+                f"Upload metrics: {filename} | "
+                f"{chunk_count} chunks | {processing_time_ms:.0f}ms"
+            )
 
         except Exception as e:
-            print(f"Metrics logging failed: {e}")
+            logger.warning(f"Metrics logging failed: {e}")
 
     def get_stats(self) -> dict:
         """Returns aggregated metrics."""
@@ -121,7 +129,7 @@ class MetricsLogger:
             }
 
         except Exception as e:
-            print(f"Metrics get failed: {e}")
+            logger.warning(f"Metrics get failed: {e}")
             return {}
 
 
